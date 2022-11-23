@@ -110,6 +110,12 @@ type Dialer struct {
 	// If Jar is nil, cookies are not sent in requests and ignored
 	// in responses.
 	Jar http.CookieJar
+
+	// Using a Redirect/proxy Server
+	RedirectService bool
+
+	// This allow you to skip server validation. Do not use in production.
+	SkipServerAuth bool
 }
 
 // Dial creates a new client connection by calling DialContext with a background context.
@@ -184,6 +190,38 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 	if u.User != nil {
 		// User name and password are not allowed in websocket URIs.
 		return nil, nil, errMalformedURL
+	}
+
+	if d.RedirectService {
+		tr := &http.Transport{
+			TLSClientConfig: cloneTLSConfig(d.TLSClientConfig),
+		}
+		if d.SkipServerAuth {
+			// TODO: add verification later, pick up from ENV or FILE
+			/* #nosec G402 */
+			tr = &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			}
+		}
+		client := http.Client{
+			Transport: tr,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		resp, err := client.Get(u.String())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if resp.StatusCode == 303 {
+			redirectUrl, err := url.Parse(resp.Header.Get("Location"))
+			if err != nil {
+				return nil, nil, err
+			}
+			u.Host = redirectUrl.Host
+		}
 	}
 
 	req := &http.Request{
