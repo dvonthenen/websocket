@@ -210,7 +210,18 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 			},
 		}
 
-		resp, err := client.Get(u.String())
+		req, err := http.NewRequestWithContext(context.Background(), "GET", u.String(), nil)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		for k, v := range requestHeader {
+			for _, v := range v {
+				req.Header.Add(k, v)
+			}
+		}
+
+		resp, err := client.Do(req)
 		if err != nil {
 			return nil, nil, err
 		}
